@@ -1,10 +1,13 @@
 package handler
 
 import (
-	"io/ioutil"
+	"fmt"
+	"github.com/dgrijalva/jwt-go"
+	"jwtToken/cfg"
 	"jwtToken/db"
 	"jwtToken/util"
 	"net/http"
+	"strconv"
 )
 
 // SignInHandler : 注册用户接口
@@ -49,27 +52,23 @@ func SignupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func SignoutHandler(w http.ResponseWriter, r *http.Request) {
-	//get access token
-	access, suc := util.BearerAuth(r)
-	if !suc {
-		http.Error(w, "Not Authorized", http.StatusUnauthorized)
-		return
-	}
-	token, err := util.VerifyToken(access, false)
+
+	acessD, err := util.ExtractTokenMetadata(r)
 	if err != nil {
 		http.Error(w, "Not Authorized", http.StatusUnauthorized)
 		return
 	}
-	username := token.Claims.(*util.JWTAccessClaims).StandardClaims.Subject
-	//unset auth cookie
-	util.UnsetCookieAuth(w)
 
-	util.DelCacheAuth(username)
+	err = util.DeleteTokens(acessD)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
 
 	//respone
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	//resp := util.NewRespMsg(0, "OK", "user "+token.Claims.(*util.Claims).Username+"signout succeed")
-	resp := util.NewRespMsg(0, "OK", "signout succeed")
+	resp := util.NewRespMsg(0, "OK", "Successfully signout")
 	if _, err := resp.WriteTo(w); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -95,16 +94,17 @@ func SigninHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//生成token
-	token, err := util.NewToken(user.Username)
+	token, err := util.NewToken(user.UserID)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	//set auth cookie
-	token.SetCookieAuth(w)
-	token.CacheAuth()
-
+	err = token.CacheAuth(user.UserID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
 	//respone
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	resp := util.NewRespMsg(0, "OK", token)
@@ -118,76 +118,81 @@ func SigninHandler(w http.ResponseWriter, r *http.Request) {
 
 func WelcomeHandler(w http.ResponseWriter, r *http.Request) {
 
-	data, err := ioutil.ReadFile("./static/view/main.html")
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	w.Write(data)
+	w.Write([]byte("Hello,welcome!"))
 	return
 }
 
 //RefreshTokenHandler :刷新token
 func RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
-	//get access token
-	access, suc := util.BearerAuth(r)
-	if suc {
-		//verify token,access token有效则不刷新
-		//token, err := util.VerifyToken(tokenStr)
-		_, err := util.VerifyToken(access, false)
-		if err == nil {
-			//respone
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			resp := util.NewRespMsg(0, "OK", "access token still valid! not need refresh")
-			_, err = resp.WriteTo(w)
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			return
-		}
-	}
-
-	//查找refresh token
-
 	refresh := r.FormValue("refresh-token")
 	if refresh == "" {
-		c, err := r.Cookie("refresh-token")
+		http.Error(w, "Can't found refresh token", http.StatusBadRequest)
+		return
+	}
 
-		if err == nil {
-			refresh = c.Value
+	//verify the token
+	cfg := cfg.Cfg.Jwt
+	token, err := jwt.Parse(refresh, func(token *jwt.Token) (interface{}, error) {
+		//Make sure that the token method conform to "SigningMethodHMAC"
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-	}
+		return []byte(cfg.JwtRefreshSecret), nil
+	})
 
-	refreshJwt, err := util.VerifyToken(refresh, true)
 	if err != nil {
-		http.Error(w, "Invalid refresh token", http.StatusBadRequest)
+		http.Error(w, "Refresh token expired", http.StatusUnauthorized)
 		return
 	}
 
-	username := refreshJwt.Claims.(*util.JWTAccessClaims).StandardClaims.Subject
-
-	//TODO： 增加查询redis中 refreshToken是否存在（登出），不应只检查refreshToken有效无效。
-	//此外！ 为减少refreshToken在内存中占用，
-
-	//生成token
-	token, err := util.NewToken(username)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+	//is token valid?
+	if _, ok := token.Claims.(jwt.Claims); !ok && !token.Valid {
+		http.Error(w, "invalid Refresh token", http.StatusUnauthorized)
 		return
 	}
 
-	//set auth cookie
-	token.SetCookieAuth(w)
-	token.CacheAuth()
+	//Since token is valid, get the uuid:
+	claims, ok := token.Claims.(jwt.MapClaims) //the token claims should conform to MapClaims
+	if ok && token.Valid {
+		refreshID, ok := claims["refresh_id"].(string) //convert the interface to string
+		if !ok {
+			http.Error(w, "invalid Refresh token", http.StatusUnprocessableEntity)
+			return
+		}
+		userID, err := strconv.ParseInt(fmt.Sprintf("%.f", claims["user_id"]), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid Refresh token", http.StatusUnprocessableEntity)
+			return
+		}
+		//Delete the previous Refresh Token
+		deleted, delErr := util.DeleteCacheAuth(refreshID)
+		if delErr != nil || deleted == 0 { //if any goes wrong
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 
-	//respone
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	resp := util.NewRespMsg(0, "OK", token)
-	_, err = resp.WriteTo(w)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		//Create new pairs of refresh and access tokens
+		token, err := util.NewToken(userID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		//save the tokens metadata to redis
+		err = token.CacheAuth(userID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		//respone
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		resp := util.NewRespMsg(0, "OK", token)
+		_, err = resp.WriteTo(w)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	} else {
+		http.Error(w, "Refresh token expired", http.StatusUnauthorized)
 	}
 
 }

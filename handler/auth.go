@@ -8,17 +8,10 @@ import (
 func HTTPInterceptor(h http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			//get access token
-			tokenStr, suc := util.BearerAuth(r)
-			if !suc {
-				http.Error(w, "Not Authorized", http.StatusUnauthorized)
-				return
-			}
-			//verify token
-			//token, err := util.VerifyToken(tokenStr)
-			_, err := util.VerifyToken(tokenStr, false)
+			_, err := util.ExtractTokenMetadata(r)
+
 			if err != nil {
-				http.Error(w, "Invalid token", http.StatusUnauthorized)
+				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return
 			}
 

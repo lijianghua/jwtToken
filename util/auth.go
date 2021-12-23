@@ -2,11 +2,14 @@ package util
 
 import (
 	"errors"
+	"fmt"
 	"github.com/dgrijalva/jwt-go"
+	"github.com/twinj/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"jwtToken/cache/redis"
 	"jwtToken/cfg"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -26,182 +29,172 @@ func VerifyPass(encodedPwd string, pwd string) bool {
 	return err == nil
 }
 
-type JWTAccessClaims struct {
-	jwt.StandardClaims
+type Token struct {
+	AccessID        string        `json:"-"`
+	Access          string        `json:"access-token"`
+	AccessCreateAt  time.Time     `json:"access-token-create-at"`
+	AccessExpiresIn time.Duration `json:"access-token-expires-in"`
+
+	RefreshID        string        `json:"-"`
+	Refresh          string        `json:"refresh-token"`
+	RefreshCreateAt  time.Time     `json:"refresh-token-create-at"`
+	RefreshExpiresIn time.Duration `json:"refresh-token-expires-in"`
 }
 
-type Token struct {
-	Access          string
-	AccessCreateAt  time.Time
-	AccessExpiresIn time.Duration
-
-	Refresh          string
-	RefreshCreateAt  time.Time
-	RefreshExpiresIn time.Duration
+type AccessDetails struct {
+	AccessID string
+	UserID   int64
 }
 
 //NewToken: 创建Token
-func NewToken(username string) (*Token, error) {
-	var err error
-	now := time.Now()
+func NewToken(userID int64) (*Token, error) {
 	cfg := cfg.Cfg.Jwt
-	accessDuration, _ := time.ParseDuration(cfg.AccessTokenDuration)
-	refreshDuration, _ := time.ParseDuration(cfg.RefreshTokenDuration)
+	accessDuration, err := time.ParseDuration(cfg.AccessTokenDuration)
+	if err != nil {
+		accessDuration = 15 * time.Minute
+	}
+	refreshDuration, err := time.ParseDuration(cfg.RefreshTokenDuration)
+	if err != nil {
+		refreshDuration = 7 * 24 * time.Hour
+	}
+	now := time.Now()
+
 	token := &Token{
+		AccessID:         uuid.NewV4().String(),
 		AccessCreateAt:   now,
 		AccessExpiresIn:  accessDuration,
 		RefreshCreateAt:  now,
 		RefreshExpiresIn: refreshDuration,
 	}
+	token.RefreshID = token.AccessID + "++" + strconv.Itoa(int(userID))
 
-	// Create the access JWT claims
-	claims := &JWTAccessClaims{
-		StandardClaims: jwt.StandardClaims{
-			Subject: username,
-			// In JWT, the expiry time is expressed as unix milliseconds
-			ExpiresAt: token.AccessCreateAt.Add(token.AccessExpiresIn).Unix(),
-		},
-	}
-
-	access, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(cfg.JwtAccessSecret))
+	// Create access token
+	claims := jwt.MapClaims{}
+	claims["authorized"] = true
+	claims["user_id"] = userID
+	claims["access_id"] = token.AccessID
+	claims["exp"] = token.AccessCreateAt.Add(token.AccessExpiresIn).Unix()
+	//&Claims{
+	//	StandardClaims: jwt.StandardClaims{
+	//		Subject: username,
+	//		// In JWT, the expiry time is expressed as unix milliseconds
+	//		ExpiresAt: token.AccessCreateAt.Add(token.AccessExpiresIn).Unix(),
+	//	},
+	//}
+	token.Access, err = jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(cfg.JwtAccessSecret))
 	if err != nil {
 		return nil, err
 	}
-	token.Access = access
 
-	// Create the refresh JWT claims
-	claims = &JWTAccessClaims{
-		StandardClaims: jwt.StandardClaims{
-			Subject: username,
-			// In JWT, the expiry time is expressed as unix milliseconds
-			ExpiresAt: token.RefreshCreateAt.Add(token.RefreshExpiresIn).Unix(),
-		},
-	}
-
-	refresh, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(cfg.JwtRefreshSecret))
+	// Create refresh token
+	rtClaims := jwt.MapClaims{}
+	rtClaims["user_id"] = userID
+	rtClaims["refresh_id"] = token.RefreshID
+	rtClaims["exp"] = token.RefreshCreateAt.Add(token.RefreshExpiresIn).Unix()
+	token.Refresh, err = jwt.NewWithClaims(jwt.SigningMethodHS256, rtClaims).SignedString([]byte(cfg.JwtRefreshSecret))
 	if err != nil {
 		return nil, err
 	}
-	token.Refresh = refresh
 
 	return token, nil
 }
 
-func (m *Token) SetCookieAuth(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     "access-token",
-		Value:    m.Access,
-		HttpOnly: true, //防止 XSS attack
-		Expires:  m.AccessCreateAt.Add(m.AccessExpiresIn),
-	})
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "refresh-token",
-		Value:    m.Refresh,
-		HttpOnly: true, //防止 XSS attack
-		Expires:  m.RefreshCreateAt.Add(m.RefreshExpiresIn),
-	})
-}
-
-func UnsetCookieAuth(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     "access-token",
-		Value:    "",
-		HttpOnly: true, //防止 XSS attack
-		MaxAge:   -1,
-	})
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "refresh-token",
-		Value:    "",
-		HttpOnly: true, //防止 XSS attack
-		MaxAge:   -1,
-	})
-}
-
-//获取accessToken顺序：
-//1.Authorization头
-//2.formValue中access-token
-//3.cookie中access-token
-func BearerAuth(r *http.Request) (string, bool) {
+//ExtractToken: Extract access token from Bearer Authorization header
+func ExtractToken(r *http.Request) (string, bool) {
 	auth := r.Header.Get("Authorization")
 	prefix := "Bearer "
 	token := ""
 
 	if auth != "" && strings.HasPrefix(auth, prefix) {
 		token = auth[len(prefix):]
-	} else {
-		token = r.FormValue("access-token")
 	}
 
-	if token == "" {
-		c, err := r.Cookie("access-token")
-
-		if err != nil {
-			return "", false
-		}
-
-		return c.Value, true
-
-	}
 	return token, token != ""
 }
 
-func (m *Token) CacheAuth() error {
+func (m *Token) CacheAuth(userID int64) error {
 	var err error
 
-	username, err := ExtractTokenSubject(m.Access)
+	err = redis.RedisClient().Set(m.AccessID, strconv.Itoa(int(userID)), m.AccessExpiresIn).Err()
 	if err != nil {
 		return err
 	}
-
-	err = redis.RedisClient().Set("access-"+username, m.Access, m.AccessExpiresIn).Err()
-	if err != nil {
-		return err
-	}
-	err = redis.RedisClient().Set("refresh-"+username, m.Refresh, m.RefreshExpiresIn).Err()
+	err = redis.RedisClient().Set(m.RefreshID, strconv.Itoa(int(userID)), m.RefreshExpiresIn).Err()
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func DelCacheAuth(username string) {
-	redis.RedisClient().Del("access-" + username)
-	redis.RedisClient().Del("refresh-" + username)
-}
-
-func ExtractTokenSubject(token string) (string, error) {
-	jwtToken, err := VerifyToken(token, false)
+func DeleteCacheAuth(givenUuid string) (int64, error) {
+	deleted, err := redis.RedisClient().Del(givenUuid).Result()
 	if err != nil {
-		return "", err
+		return 0, err
 	}
-
-	return jwtToken.Claims.(*JWTAccessClaims).StandardClaims.Subject, nil
-
+	return deleted, nil
 }
-func VerifyToken(token string, isRefresh bool) (*jwt.Token, error) {
 
-	claims := &JWTAccessClaims{}
-	cfg := cfg.Cfg.Jwt
-	// Parse the JWT string and store the result in `claims`.
-	// Note that we are passing the key in this method as well. This method will return an error
-	// if the token is invalid (if it has expired according to the expiry time we set on sign in),
-	// or if the signature does not match
-	tkn, err := jwt.ParseWithClaims(token, claims, func(token *jwt.Token) (interface{}, error) {
-		if !isRefresh {
-			return []byte(cfg.JwtAccessSecret), nil
-		}
-		return []byte(cfg.JwtRefreshSecret), nil
-	})
+func DeleteTokens(authD *AccessDetails) error {
+	//get the refresh uuid
+	refreshUuid := fmt.Sprintf("%s++%d", authD.AccessID, authD.UserID)
+	//delete access token
+	deletedAt, err := redis.RedisClient().Del(authD.AccessID).Result()
+	if err != nil {
+		return err
+	}
+	//delete refresh token
+	deletedRt, err := redis.RedisClient().Del(refreshUuid).Result()
+	if err != nil {
+		return err
+	}
+	//When the record is deleted, the return value is 1
+	if deletedAt != 1 || deletedRt != 1 {
+		return errors.New("redis delete token failed")
+	}
+	return nil
+}
+
+func ExtractTokenMetadata(r *http.Request) (*AccessDetails, error) {
+	token, err := VerifyToken(r)
 	if err != nil {
 		return nil, err
 	}
-	if !tkn.Valid {
-		if !isRefresh {
-			return nil, errors.New("invalid token")
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if ok && token.Valid {
+		accessID, ok := claims["access_id"].(string)
+		if !ok {
+			return nil, err
 		}
-		return nil, errors.New("invalid refresh token")
+		userID, err := strconv.ParseInt(fmt.Sprintf("%.f", claims["user_id"]), 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		return &AccessDetails{
+			AccessID: accessID,
+			UserID:   userID,
+		}, nil
 	}
-	return tkn, nil
+	return nil, err
+}
+
+func VerifyToken(r *http.Request) (*jwt.Token, error) {
+
+	access, ok := ExtractToken(r)
+	if !ok {
+		return nil, errors.New("Can't find access token from Bearer Authorization header")
+	}
+
+	cfg := cfg.Cfg.Jwt
+	token, err := jwt.Parse(access, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(cfg.JwtAccessSecret), nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return token, nil
 }

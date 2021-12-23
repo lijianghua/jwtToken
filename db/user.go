@@ -5,6 +5,7 @@ import (
 )
 
 type TableUser struct {
+	UserID   int64
 	Username string
 	Password string
 }
@@ -21,7 +22,7 @@ func NewUser(username, password string) error {
 func GetUser(username string) (*TableUser, error) {
 	user := TableUser{}
 
-	err := mariadb.DBConn().QueryRow("select user_name,user_pwd from tbl_user where user_name = ? limit 1", username).Scan(&user.Username, &user.Password)
+	err := mariadb.DBConn().QueryRow("select id,user_name,user_pwd from tbl_user where user_name = ? limit 1", username).Scan(&user.UserID, &user.Username, &user.Password)
 
 	if err != nil {
 		return nil, err

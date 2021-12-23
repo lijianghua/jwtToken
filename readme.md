@@ -10,9 +10,9 @@
 + 实现拦截器
 + 模拟signup/signin/signout/refresh/welcome handler处理
 ## 第三方库使用
-+ github.com/dgrijalva/jwt-go
-+ github.com/go-redis/redis
-+ github.com/go-sql-driver/mysql
-+ github.com/google/uuid 暂时未用
-+ gopkg.in/yaml.v3 支持解析yaml/json等
-+ "golang.org/x/crypto/bcrypt" bcrypt hash算法，保存密码hash较为合适
++   github.com/dgrijalva/jwt-go v3.2.0+incompatible
++   github.com/go-redis/redis v6.15.9+incompatible
++   github.com/go-sql-driver/mysql v1.6.0
++   github.com/twinj/uuid v1.0.0
++   golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
++   gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
