@@ -1,6 +1,6 @@
-#jwtToken Example
+# jwtToken Example
 
-##主要技术点：
+## 主要技术点：
 + 实现JWT token 无状态机制
 + 有状态的 JWT token 保存到 redis
 + mariadb golang 基本操作
