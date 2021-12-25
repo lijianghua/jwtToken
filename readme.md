@@ -16,5 +16,5 @@
 + github.com/twinj/uuid v1.0.0
 + golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
 + gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
-##bug
+## bug
 未按照oauth标准响应格式返回（包括成功和错误）
