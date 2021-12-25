@@ -15,9 +15,6 @@ func main() {
 	redis.InitRedis()
 	mariadb.InitDB()
 
-	// 静态资源处理
-	//http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
-
 	http.HandleFunc("/signin", handler.SigninHandler)
 	http.HandleFunc("/signup", handler.SignupHandler)
 	http.HandleFunc("/signout", handler.SignoutHandler)
