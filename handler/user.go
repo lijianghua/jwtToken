@@ -11,6 +11,16 @@ type User struct {
 	Password string
 }
 
+func (m *User) Load(username string) error {
+	user, err := db.GetUser(username)
+	if err != nil {
+		return err
+	}
+	m.UserID = user.UserID
+	m.Username = user.Username
+
+	return nil
+}
 func (m *User) IsValid() bool {
 	//check parameter
 	if len(m.Username) < 3 || len(m.Password) < 3 {

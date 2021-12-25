@@ -93,6 +93,10 @@ func SigninHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := user.Load(user.Username); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	//生成token
 	token, err := util.NewToken(user.UserID)
 	if err != nil {
@@ -106,13 +110,7 @@ func SigninHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	//respone
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	resp := util.NewRespMsg(0, "OK", token)
-	_, err = resp.WriteTo(w)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+	token.Response(w)
 
 }
 
@@ -166,7 +164,7 @@ func RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		//Delete the previous Refresh Token
 		deleted, delErr := util.DeleteCacheAuth(refreshID)
-		if delErr != nil || deleted == 0 { //if any goes wrong
+		if delErr != nil || deleted == 0 { //可能是之前登出或取消授权，所以禁止刷新
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -184,13 +182,7 @@ func RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		//respone
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		resp := util.NewRespMsg(0, "OK", token)
-		_, err = resp.WriteTo(w)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
+		token.Response(w)
 	} else {
 		http.Error(w, "Refresh token expired", http.StatusUnauthorized)
 	}

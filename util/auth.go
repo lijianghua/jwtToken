@@ -126,6 +126,15 @@ func (m *Token) CacheAuth(userID int64) error {
 	return nil
 }
 
+func FetchAuth(authD *AccessDetails) (int64, error) {
+	userid, err := redis.RedisClient().Get(authD.AccessID).Result()
+	if err != nil {
+		return 0, err
+	}
+	userID, _ := strconv.ParseInt(userid, 10, 64)
+	return userID, nil
+}
+
 func DeleteCacheAuth(givenUuid string) (int64, error) {
 	deleted, err := redis.RedisClient().Del(givenUuid).Result()
 	if err != nil {
@@ -197,4 +206,25 @@ func VerifyToken(r *http.Request) (*jwt.Token, error) {
 	}
 
 	return token, nil
+}
+
+func (m *Token) Response(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+
+	resp := NewRespMsg(0, "OK", struct {
+		Access           string `json:"access_token"`
+		TokenType        string `json:"token_type"`
+		AccessExpiresIn  string `json:"access_expires_in"`
+		Refresh          string `json:"refresh_token"`
+		RefreshExpiresIn string `json:"refresh_expires_in"`
+	}{
+		m.Access,
+		"Bearer",
+		fmt.Sprintf("%.0f", m.AccessExpiresIn.Seconds()),
+		m.Refresh,
+		fmt.Sprintf("%.0f", m.RefreshExpiresIn.Seconds()),
+	})
+
+	resp.WriteTo(w)
 }
