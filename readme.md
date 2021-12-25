@@ -2,7 +2,7 @@
 
 ## 主要技术点：
 + 实现JWT token 无状态机制
-+ 有状态的 JWT token 保存到 redis
++ 有状态的 JWT token 保存到 redis,登出之后无法再使用refreshtoken和accesstoken
 + mariadb golang 基本操作
 + refresh token机制
 + bearer 验证
@@ -16,5 +16,3 @@
 + github.com/twinj/uuid v1.0.0
 + golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
 + gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
-## bug
-userid好像没有取到，有空修改
