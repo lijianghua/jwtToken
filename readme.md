@@ -1,4 +1,4 @@
-# jwtToken Example
+# jwtToken Example --
 
 ## 主要技术点：
 + 实现JWT token 无状态机制
