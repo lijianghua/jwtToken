@@ -1,4 +1,4 @@
-# jwt API Example
+# jwt API Example 2.0
 
 ## 主要技术点：
 + JWT token 保存到 redis实现有状态，解决无状态JWT的不干净退出。 登出之后无法再使用refreshtoken和accesstoken
