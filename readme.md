@@ -9,6 +9,8 @@
 + 统一配置文件yaml
 + 实现拦截器
 + 模拟signup/signin/signout/refresh/welcome handler处理
+## 流程
+![avatar](tokenflow.png)
 ## 第三方库使用
 + github.com/dgrijalva/jwt-go v3.2.0+incompatible
 + github.com/go-redis/redis v6.15.9+incompatible
