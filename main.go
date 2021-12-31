@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"jwtToken/cache/redis"
-	"jwtToken/cfg"
+	"jwtToken/config"
 	"jwtToken/db/mariadb"
 	"jwtToken/handler"
 	"log"
@@ -11,9 +11,15 @@ import (
 )
 
 func main() {
-	cfg.InitCfg("./cfg/cfg.yaml")
-	redis.InitRedis()
-	mariadb.InitDB()
+	config.InitCfg("./config/config.yaml")
+
+	if err := redis.NewClient(&config.Cfg); err != nil {
+		log.Fatalln(err)
+	}
+
+	if err := mariadb.NewDatabase(&config.Cfg); err != nil {
+		log.Fatalln(err)
+	}
 
 	http.HandleFunc("/signin", handler.SigninHandler)
 	http.HandleFunc("/signup", handler.SignupHandler)
@@ -21,7 +27,7 @@ func main() {
 	http.HandleFunc("/refresh", handler.RefreshTokenHandler)
 	http.HandleFunc("/welcome", handler.HTTPInterceptor(handler.WelcomeHandler))
 
-	cfg := cfg.Cfg.Server
+	cfg := config.Cfg.Server
 
 	log.Fatalln(http.ListenAndServe(fmt.Sprintf(":%s", cfg.Port), nil))
 }

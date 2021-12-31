@@ -3,26 +3,35 @@ package mariadb
 import (
 	"database/sql"
 	"fmt"
+	//config
+	"jwtToken/config"
+
+	//driver
 	_ "github.com/go-sql-driver/mysql"
-	"jwtToken/cfg"
-	"os"
 )
 
 var db *sql.DB
 
-func InitDB() {
-	//db, _ = sql.Open("mysql", "root:123@tcp(localhost:3306)/ljhdb")
-	cfg := cfg.Cfg.Db
-	db, _ = sql.Open(cfg.Driver, fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
-		cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.DbName))
+func NewDatabase(cnf *config.Config) error {
+	var err error
 
-	err := db.Ping()
+	db, err = sql.Open(cnf.Db.Type, fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
+		cnf.Db.User, cnf.Db.Password, cnf.Db.Host, cnf.Db.Port, cnf.Db.DatabaseName))
+
 	if err != nil {
-		fmt.Println("Failed to connect to mysql, err:" + err.Error())
-		os.Exit(1)
+		return err
 	}
-	db.SetMaxOpenConns(100)
-	db.SetMaxIdleConns(20)
+	err = db.Ping()
+	if err != nil {
+		return err
+	}
+
+	// Max idle connections
+	db.SetMaxOpenConns(cnf.Db.MaxIdleConns)
+	// Max open connections
+	db.SetMaxIdleConns(cnf.Db.MaxOpenConns)
+
+	return nil
 }
 
 // DBConn : 返回数据库连接对象

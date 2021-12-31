@@ -5,13 +5,14 @@ redis:
   host: localhost
   port: 6379
 db:
-  driver: mysql
+  type: mysql
   host: localhost
   port: 3306
   user: root
   password: 123
-  dbname: ljhdb
-  #dsn: root:123@tcp(localhost:3306)/ljhdb
+  databasename: ljhdb
+  max-idle-conns: 20
+  max-open-conns: 100
 jwt:
   access-token-duration: 1m #minutes
   refresh-token-duration: 168h  #7*24 #hours

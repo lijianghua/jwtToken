@@ -3,7 +3,7 @@ package handler
 import (
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
-	"jwtToken/cfg"
+	"jwtToken/config"
 	"jwtToken/db"
 	"jwtToken/util"
 	"net/http"
@@ -129,7 +129,7 @@ func RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//verify the token
-	cfg := cfg.Cfg.Jwt
+	cfg := config.Cfg.Jwt
 	token, err := jwt.Parse(refresh, func(token *jwt.Token) (interface{}, error) {
 		//Make sure that the token method conform to "SigningMethodHMAC"
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {

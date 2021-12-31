@@ -7,7 +7,7 @@ import (
 	"github.com/twinj/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"jwtToken/cache/redis"
-	"jwtToken/cfg"
+	"jwtToken/config"
 	"net/http"
 	"strconv"
 	"strings"
@@ -48,7 +48,7 @@ type AccessDetails struct {
 
 //NewToken: 创建Token
 func NewToken(userID int64) (*Token, error) {
-	cfg := cfg.Cfg.Jwt
+	cfg := config.Cfg.Jwt
 	accessDuration, err := time.ParseDuration(cfg.AccessTokenDuration)
 	if err != nil {
 		accessDuration = 15 * time.Minute
@@ -193,7 +193,7 @@ func VerifyToken(r *http.Request) (*jwt.Token, error) {
 		return nil, errors.New("Can't find access token from Bearer Authorization header")
 	}
 
-	cfg := cfg.Cfg.Jwt
+	cfg := config.Cfg.Jwt
 	token, err := jwt.Parse(access, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])

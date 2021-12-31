@@ -1,10 +1,21 @@
-package cfg
+package config
 
 import (
 	"gopkg.in/yaml.v3"
 	"io/ioutil"
 	"log"
 )
+
+type DatabaseConfig struct {
+	Type         string `yaml:"type"`
+	Host         string `yaml:"host"`
+	Port         string `yaml:"port"`
+	User         string `yaml:"user"`
+	Password     string `yaml:"password"`
+	DatabaseName string `yaml:"databasename"`
+	MaxIdleConns int    `yaml:"max-idle-conns"`
+	MaxOpenConns int    `yaml:"max-open-conns"`
+}
 
 type Config struct {
 	Server struct {
@@ -14,15 +25,7 @@ type Config struct {
 		Host string `yaml:"host"`
 		Port string `yaml:"port"`
 	}
-	Db struct {
-		Driver   string `yaml:"driver"`
-		Host     string `yaml:"host"`
-		Port     string `yaml:"port"`
-		User     string `yaml:"user"`
-		Password string `yaml:"password"`
-		DbName   string `yaml:"dbname"`
-	}
-
+	Db  DatabaseConfig
 	Jwt struct {
 		AccessTokenDuration  string `yaml:"access-token-duration"`
 		RefreshTokenDuration string `yaml:"refresh-token-duration"`
