@@ -1,65 +1,54 @@
 package handler
 
 import (
-	"fmt"
+	"context"
+	"database/sql"
 	"github.com/dgrijalva/jwt-go"
-	"jwtToken/config"
-	"jwtToken/db"
+	"jwtToken/service/userService"
 	"jwtToken/util"
 	"net/http"
-	"strconv"
 )
 
 // SignInHandler : 注册用户接口
 func SignupHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	//获取参数
-	user := &User{}
-	//json.NewDecoder(r.Body).Decode(&user)
-	user.Username = r.FormValue("username")
-	user.Password = r.FormValue("password")
-
-	if valid := user.IsValid(); !valid {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+	user := &userService.User{
+		Username: r.FormValue("username"),
+		Password: r.FormValue("password"),
+		Email: sql.NullString{
+			r.FormValue("email"),
+			true,
+		},
+		Phone: sql.NullString{
+			r.FormValue("phone"),
+			true,
+		},
 	}
-
-	// 对密码进行bcrypt加密
-	user.Password, err = util.EncodePass(user.Password)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
+	ctx := context.Background()
 	// 将用户信息注册到用户表中
-	if err := db.NewUser(user.Username, user.Password); err != nil {
+	if err := userService.Service.Create(ctx, user); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 
 	}
 	resp := util.NewRespMsg(0, "OK", "signup succeed")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_, err = resp.WriteTo(w)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+	resp.WriteTo(w)
 }
 func SignoutHandler(w http.ResponseWriter, r *http.Request) {
 
-	acessD, err := util.ExtractTokenMetadata(r)
+	acessD, err := userService.Service.TokenService.ExtractTokenMetadata(r)
 	if err != nil {
 		http.Error(w, "Not Authorized", http.StatusUnauthorized)
 		return
 	}
 
-	err = util.DeleteTokens(acessD)
+	err = userService.Service.TokenService.DeleteTokens(acessD)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -67,44 +56,41 @@ func SignoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	//respone
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	//resp := util.NewRespMsg(0, "OK", "user "+token.Claims.(*util.Claims).Username+"signout succeed")
 	resp := util.NewRespMsg(0, "OK", "Successfully signout")
-	if _, err := resp.WriteTo(w); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+	resp.WriteTo(w)
 }
 func SigninHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	//获取参数
-	user := &User{}
-	user.Username = r.FormValue("username")
-	user.Password = r.FormValue("password")
+	userName := r.FormValue("username")
+	userPass := r.FormValue("password")
+
+	ctx := context.Background()
 
 	//验证密码
-	if suc := user.Verify(); !suc {
-		w.WriteHeader(http.StatusUnauthorized)
+	err := userService.Service.Verify(ctx, userName, userPass)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	if err := user.Load(user.Username); err != nil {
+	user, err := userService.Service.GetByName(ctx, userName)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	//生成token
-	token, err := util.NewToken(user.UserID)
+	token, err := userService.Service.TokenService.NewToken(user.UserID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	err = token.CacheAuth(user.UserID)
+	err = userService.Service.TokenService.CacheAuth(user.UserID, token)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
@@ -129,15 +115,7 @@ func RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//verify the token
-	cfg := config.Cfg.Jwt
-	token, err := jwt.Parse(refresh, func(token *jwt.Token) (interface{}, error) {
-		//Make sure that the token method conform to "SigningMethodHMAC"
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return []byte(cfg.JwtRefreshSecret), nil
-	})
-
+	token, err := userService.Service.TokenService.ParseRefreshToken(refresh)
 	if err != nil {
 		http.Error(w, "Refresh token expired", http.StatusUnauthorized)
 		return
@@ -157,26 +135,26 @@ func RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid Refresh token", http.StatusUnprocessableEntity)
 			return
 		}
-		userID, err := strconv.ParseInt(fmt.Sprintf("%.f", claims["user_id"]), 10, 64)
-		if err != nil {
+		userID, ok := claims["user_id"].(string)
+		if !ok {
 			http.Error(w, "invalid Refresh token", http.StatusUnprocessableEntity)
 			return
 		}
 		//Delete the previous Refresh Token
-		deleted, delErr := util.DeleteCacheAuth(refreshID)
+		deleted, delErr := userService.Service.TokenService.DeleteCacheAuth(refreshID)
 		if delErr != nil || deleted == 0 { //可能是之前登出或取消授权，所以禁止刷新
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		//Create new pairs of refresh and access tokens
-		token, err := util.NewToken(userID)
+		token, err := userService.Service.TokenService.NewToken(userID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return
 		}
 		//save the tokens metadata to redis
-		err = token.CacheAuth(userID)
+		err = userService.Service.TokenService.CacheAuth(userID, token)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return

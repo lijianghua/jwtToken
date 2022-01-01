@@ -3,6 +3,7 @@ package mariadb
 import (
 	"database/sql"
 	"fmt"
+	//_ "github.com/golang-migrate/migrate/v4/source/file"
 	//config
 	"jwtToken/config"
 
@@ -10,31 +11,38 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-var db *sql.DB
+func NewDatabase(dbCnf *config.DatabaseConfig) (*sql.DB, error) {
 
-func NewDatabase(cnf *config.Config) error {
-	var err error
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", dbCnf.User, dbCnf.Password, dbCnf.Host, dbCnf.Port, dbCnf.DatabaseName)
 
-	db, err = sql.Open(cnf.Db.Type, fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
-		cnf.Db.User, cnf.Db.Password, cnf.Db.Host, cnf.Db.Port, cnf.Db.DatabaseName))
-
+	db, err := sql.Open(dbCnf.Type, dsn)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = db.Ping()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Max idle connections
-	db.SetMaxOpenConns(cnf.Db.MaxIdleConns)
+	db.SetMaxOpenConns(dbCnf.MaxIdleConns)
 	// Max open connections
-	db.SetMaxIdleConns(cnf.Db.MaxOpenConns)
+	db.SetMaxIdleConns(dbCnf.MaxOpenConns)
 
-	return nil
-}
-
-// DBConn : 返回数据库连接对象
-func DBConn() *sql.DB {
-	return db
+	//mCfg := &migratemysql.Config{
+	//	DatabaseName: dbCnf.DatabaseName,
+	//}
+	//driver, err := migratemysql.WithInstance(db, mCfg)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//m, err := migrate.NewWithDatabaseInstance("file://"+dbCnf.MigrationDir, "mysql", driver)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//err = m.Up()
+	//if err != nil && err != migrate.ErrNoChange {
+	//	return nil, err
+	//}
+	return db, nil
 }

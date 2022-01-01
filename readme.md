@@ -8,6 +8,7 @@
 + 统一配置文件yaml
 + 实现拦截器
 + 模拟signup/signin/signout/refresh/welcome handler处理
++ 封装user和token，db及redis及配置文件
 ## 流程
 ![image](flow.png)
 ## 第三方库使用

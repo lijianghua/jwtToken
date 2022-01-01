@@ -13,8 +13,9 @@ db:
   databasename: ljhdb
   max-idle-conns: 20
   max-open-conns: 100
+  migration-dir: db/mariadb/migrations
 jwt:
-  access-token-duration: 1m #minutes
+  access-token-duration: 0.5m #minutes
   refresh-token-duration: 168h  #7*24 #hours
   jwt-access-secret: Sj.$#&*@(+-~`3950Mgt
   jwt-refresh-secret: Wy&^3%&*6Zst`+-H)6

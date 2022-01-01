@@ -3,7 +3,6 @@ package config
 import (
 	"gopkg.in/yaml.v3"
 	"io/ioutil"
-	"log"
 )
 
 type DatabaseConfig struct {
@@ -15,34 +14,39 @@ type DatabaseConfig struct {
 	DatabaseName string `yaml:"databasename"`
 	MaxIdleConns int    `yaml:"max-idle-conns"`
 	MaxOpenConns int    `yaml:"max-open-conns"`
+	MigrationDir string `yaml:"migration-dir"`
+}
+
+type RedisConfig struct {
+	Host string `yaml:"host"`
+	Port string `yaml:"port"`
+}
+
+type JwtConfig struct {
+	AccessTokenDuration  string `yaml:"access-token-duration"`
+	RefreshTokenDuration string `yaml:"refresh-token-duration"`
+	JwtAccessSecret      string `yaml:"jwt-access-secret"`
+	JwtRefreshSecret     string `yaml:"jwt-refresh-secret"`
 }
 
 type Config struct {
 	Server struct {
 		Port string `yaml:"port"`
 	}
-	Redis struct {
-		Host string `yaml:"host"`
-		Port string `yaml:"port"`
-	}
-	Db  DatabaseConfig
-	Jwt struct {
-		AccessTokenDuration  string `yaml:"access-token-duration"`
-		RefreshTokenDuration string `yaml:"refresh-token-duration"`
-		JwtAccessSecret      string `yaml:"jwt-access-secret"`
-		JwtRefreshSecret     string `yaml:"jwt-refresh-secret"`
-	}
+	Redis *RedisConfig
+	Db    *DatabaseConfig
+	Jwt   *JwtConfig
 }
 
-var Cfg Config
-
-func InitCfg(file string) {
+func InitCfg(file string) (*Config, error) {
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
-		log.Fatalln("read config file error: " + err.Error())
+		return nil, err
 	}
-	err = yaml.Unmarshal(data, &Cfg)
+	cfg := &Config{}
+	err = yaml.Unmarshal(data, cfg)
 	if err != nil {
-		log.Fatalln("config file unmarshal error: " + err.Error())
+		return nil, err
 	}
+	return cfg, nil
 }
