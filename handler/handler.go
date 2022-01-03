@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"jwtToken/service/userService"
 	"jwtToken/util"
@@ -102,7 +103,17 @@ func SigninHandler(w http.ResponseWriter, r *http.Request) {
 
 func WelcomeHandler(w http.ResponseWriter, r *http.Request) {
 
-	w.Write([]byte("Hello,welcome!"))
+	userid, ok := r.Context().Value("userID").(string)
+	if !ok {
+		http.Error(w, "context can't found userid", http.StatusBadRequest)
+		return
+	}
+	u, err := userService.Service.Get(context.Background(), userid)
+	if err != nil {
+		http.Error(w, "invalid userid ", http.StatusBadRequest)
+		return
+	}
+	w.Write([]byte(fmt.Sprintf("Hello %s,welcome!", u.Username)))
 	return
 }
 
